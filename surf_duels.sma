@@ -5,12 +5,15 @@
 
 #include <colorchat>
 
+#define MAX_CHAR		512
+
 new PLUGIN[] = "Surf duels"
 new AUTHOR[] = "\mEl\"
-new VERSION[] = "0.1-a"
+new VERSION[] = "0.3-a"
 
 new CHATSERVERNAME[] = "!n[!gSurf Duels!n]"
 
+new g_iPlayerPage[33] 
 new Timer = 0
 
 public plugin_init()
@@ -20,8 +23,7 @@ public plugin_init()
     register_menucmd(register_menuid("Show_Judge_Menu"), (1<<0|1<<9), "Handle_Judge_Menu");
     register_clcmd("nightvision","Show_Judge_Menu")
 
-    register_menucmd(register_menuid("Judge_choose_players"), (1<<0|1<<9), "Handle_Judge_choose_players");
-
+    register_menucmd(register_menuid("Judge_choose_players"), (1<<0|1<<1|1<<2|1<<3|1<<4|1<<5|1<<6|1<<7|1<<8|1<<9), "Handle_Judge_choose_players");
 }
 
 public f_get_awp(id)
@@ -43,12 +45,12 @@ public Show_Judge_Menu(id)
 
 	if(get_user_flags(id) & ADMIN_KICK)
 	{
-		iLen += formatex(szMenu[iLen], charsmax(szMenu) - iLen, "\r[\w1\r] \wНачать дуэль^n")
+		iLen += formatex(szMenu[iLen], charsmax(szMenu) - iLen, "\r[\w1\r] \wВыбрать игроков для дуэли^n")
 		iKeys |= (1<<0)	
 	}
 	else
 	{
-		iLen += formatex(szMenu[iLen], charsmax(szMenu) - iLen, "\r[\d#\r] \dНачать дуэль^n")
+		iLen += formatex(szMenu[iLen], charsmax(szMenu) - iLen, "\r[\d#\r] \dВыбрать игроков для дуэли^n")
 	}
 	
 	formatex(szMenu[iLen], charsmax(szMenu) - iLen, "^n\r[\w0\r] \wВыход")
@@ -56,6 +58,9 @@ public Show_Judge_Menu(id)
 	
 	return show_menu(id, iKeys, szMenu, -1, "Show_Judge_Menu");
 }
+
+new szPlayersMenu[33][32]
+new szJudgeChoice[33][2]
 
 public Handle_Judge_Menu(id, iKey)
 {
@@ -66,8 +71,9 @@ public Handle_Judge_Menu(id, iKey)
 	{
         case 0: 
 		{
-            print_color_chat(0, "%s !gДуэль !yскоро начнётся. [!t%s!y] против [!t%s!y]", CHATSERVERNAME, "kto-to1", "kogo-to2")
-            set_task(5.0, "start_duel", id, _, _, "a", 1)
+            szJudgeChoice[id][0] = 0
+            szJudgeChoice[id][1] = 0
+            Judge_choose_players(id, g_iPlayerPage[ id ] = 0)
             return PLUGIN_HANDLED
         }
 
@@ -78,20 +84,120 @@ public Handle_Judge_Menu(id, iKey)
 }    
 
 
-// Реализовать выбор двух игроков судьёй
-public Judge_choose_players(id)
+public Judge_choose_players(id, iPage)
 {
+    new szPlayers[ 32 ] , iNum , iLen , menu[ MAX_CHAR ] , iKey, iItem, name[ 32 ]
+    
+	get_players(szPlayers, iNum)
+	szPlayersMenu[id] = szPlayers
 
+	new iStart = iPage * 8;
+	new iEnd = iStart + 8;
+
+	iLen = format(menu[ iLen ] , charsmax( menu ) - iLen , "\yВыберите пару игроков для дуэли^n^n")
+
+    if(szJudgeChoice[id][0] != 0)
+    {
+        iLen += format(menu[ iLen ] , charsmax( menu ) - iLen , "\yВыбраны:^n" )
+        new szNameVictim[32]
+        get_user_name( szJudgeChoice[id][0] , szNameVictim , charsmax( szNameVictim ) )
+        iLen += format(menu[ iLen ] , charsmax( menu ) - iLen , "\w%s^n%s", szNameVictim, szJudgeChoice[id][1] == 0 ? "^n" : "")
+    }
+    if(szJudgeChoice[id][1] != 0)
+    {
+        new szNameVictim[32]
+        get_user_name( szJudgeChoice[id][1] , szNameVictim , charsmax( szNameVictim ) )
+        iLen += format(menu[ iLen ] , charsmax( menu ) - iLen , "\w%s^n^n", szNameVictim)
+
+        // Делаем новое меню
+        iKey |= (1<<0)
+        iLen += format( menu[ iLen ] , charsmax( menu ) - iLen , "\r[\w1\r] \wНачать дуэль!^n")
+       
+        iKey |= (1<<9)
+        formatex(menu[iLen], charsmax(menu) - iLen, "^n\r[\w0\r] \wВыход")
+        
+
+        return show_menu( id , iKey , menu , -1 , "Judge_choose_players" )
+    }
+    
+
+	
+	for( new i = iStart; i < iEnd; i++ ) 
+	{
+		if( i < iNum )
+		{
+			get_user_name(szPlayers[ i ], name, charsmax(name))
+
+			if( id == szPlayers[ i ] )
+			{
+				iKey |= ( 1<<iItem )
+				iLen += format( menu[ iLen ] , charsmax( menu ) - iLen , "\r[\w%d\r] \w%s \y(\rЭто вы\y)^n" , ++iItem , name )
+			}
+			else
+			{
+				iKey |= ( 1<<iItem )
+				iLen += format( menu[ iLen ] , charsmax( menu ) - iLen , "\d[%d] %s^n" , ++iItem , name )
+			}
+		}
+	}
+
+	iKey |= ( 1<<9 )
+
+	if(iEnd < iNum)
+	{
+		iKey |= ( 1<<8 )
+		iLen += format( menu[ iLen ] , charsmax( menu ) - iLen , "^n\r9. \wДальше^n\r0. \w%s" , iPage ? "Назад" : "Выход" )
+	}
+	else
+    {
+		iLen += format( menu[ iLen ] , charsmax( menu ) - iLen , "^n\r0. \w%s" , iPage ? "Назад" : "Выход" )
+    }
+
+    return show_menu( id , iKey , menu , -1 , "Judge_choose_players" )
 }
 
 public Handle_Judge_choose_players(id, iKey)
 {
+    switch( iKey )
+	{
+        case 8:
+        {
+            return Judge_choose_players( id , ++g_iPlayerPage[ id ] )
+        }
+		case 9: 
+        {
+            return Judge_choose_players( id , --g_iPlayerPage[ id ] )
+        }
+        default:
+        {
+            if(szJudgeChoice[id][0] != 0 && szJudgeChoice[id][1] != 0 )
+            {
+                new Player1[ 32 ] , Player2[ 32 ]
+                get_user_name( szJudgeChoice[id][0] , Player1 , charsmax( Player1 ) )
+                get_user_name( szJudgeChoice[id][1] , Player2 , charsmax( Player2 ) )
 
+                print_color_chat(0, "%s !gДуэль !yскоро начнётся.", CHATSERVERNAME)
+                print_color_chat(0, "%s [!t%s!y] против [!t%s!y]", CHATSERVERNAME, Player1, Player2)
+
+                set_task(5.0, "start_duel", id, _, _, "a", 1)
+                return PLUGIN_HANDLED // ... Можно вернуть меню админки, там будет рестарт, смена мапы и т.д.
+            }
+            if(szJudgeChoice[id][0] == 0)
+            {
+                szJudgeChoice[id][0] = szPlayersMenu[ id ][ ( g_iPlayerPage[ id ] * 8 ) + iKey ]
+                return Judge_choose_players(id, g_iPlayerPage[id])
+            }
+
+            if(szJudgeChoice[id][0] != 0)
+            {
+                szJudgeChoice[id][1] = szPlayersMenu[ id ][ ( g_iPlayerPage[ id ] * 8 ) + iKey ]
+                return Judge_choose_players(id, g_iPlayerPage[id])
+            }
+        }
+    }
+
+    return PLUGIN_HANDLED
 }
-
-
-
-
 
 stock print_color_chat(const index, const input[], any:...)
 {
@@ -128,6 +234,7 @@ public duel_countdown(id)
     {
         print_color_chat(0, "%s Дуэль началась!", CHATSERVERNAME)
         remove_task(id)
+        // Вызов какой-то функции, которая начинает дуэль. Раскидывает по командам, выдаёт оружие, остальных кидает в спек.
     }
 }  
 
