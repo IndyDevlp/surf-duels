@@ -10,9 +10,10 @@
 
 new PLUGIN[] = "Surf duels"
 new AUTHOR[] = "\mEl\"
-new VERSION[] = "0.5-a"
+new VERSION[] = "0.11-a"
 
-new CHATSERVERNAME[] = "!gSurf Duels !t>>>!y"
+//new CHATSERVERNAME[] = "!gSurf Duels !t>>>!y"
+new CHATSERVERNAME[] = "!gTournament !t>>>!y"
 
 new g_iPlayerPage[33] 
 new Timer = 0
@@ -31,7 +32,6 @@ new bool:round_started = false
 public plugin_init()
 {
     register_plugin(PLUGIN, VERSION, AUTHOR)
-    register_clcmd("get_awp","f_get_awp",_,_)
     register_menucmd(register_menuid("Show_Judge_Menu"), (1<<0|1<<1|1<<2|1<<3|1<<4|1<<5|1<<6|1<<7|1<<8|1<<9), "Handle_Judge_Menu")
     register_clcmd("nightvision","Show_Judge_Menu")
 
@@ -46,24 +46,34 @@ public plugin_init()
     register_event("HLTV", "Round_Start", "a", "1=0", "2=0")
 }
 
-// Реализовать когда игрок заходит на сервер, а дуэль идёт.
+// Реализовать когда игрок заходит на сервер и идёт дуэль то его кидает в спек
 public cmdChooseTeam(id)
 {
+    // if(cs_get_user_team(id) == CS_TEAM_UNASSIGNED)
+    // {
+    //     engclient_cmd(id, "jointeam", "6")
+        
+    //     return PLUGIN_HANDLED
+    // }
+
     if(isNowDuel || round_started)
     {
-        print_color_chat(id, "%s Нельзя присоединяться к игре, когда идёт дуэль!", CHATSERVERNAME)
-        return PLUGIN_HANDLED
+        print_color_chat(id, "%s Нельзя присоединяться к игре, когда идёт дуэль!", CHATSERVERNAME)  
     }
     else
     {
         return PLUGIN_CONTINUE;
     }
+
+    return PLUGIN_HANDLED
 }
 
-public f_get_awp(id)
+public client_putinserver(id)
 {
-    give_item(id, "weapon_awp")
-    print_color_chat(id, "%s you getting !t[!gAWP!t]", CHATSERVERNAME)
+    if(isNowDuel || round_started)
+    {
+        engclient_cmd(id, "jointeam", "6")
+    }
 }
 
 public Show_Judge_Menu(id)
@@ -89,7 +99,7 @@ public Show_Judge_Menu(id)
 	}
     else if(!isNowDuel)
     {
-		iLen += formatex(szMenu[iLen], charsmax(szMenu) - iLen, "\r[\w2\r \dСбросить дуэль \y(\rДуэль не идёт\y)^n")
+		iLen += formatex(szMenu[iLen], charsmax(szMenu) - iLen, "\r[\w2\r] \dСбросить дуэль \y(\rДуэль не идёт\y)^n")
     }
 	
 	formatex(szMenu[iLen], charsmax(szMenu) - iLen, "^n\r[\w0\r] \wВыход")
@@ -139,16 +149,21 @@ public doDuel_end(id)
 
     for(new i = 0; i < count_of_players; i++)
     {
+        if(is_user_alive(Players[i]))
+        {
+            user_kill(Players[i], 1)
+        }
+
         if((i+1) & 1)
         {
-            cs_set_user_team(Players[i], CS_TEAM_CT)
+            engclient_cmd(Players[i], "jointeam", "1") 
         }
         else
         {
-            cs_set_user_team(Players[i], CS_TEAM_T)
+            engclient_cmd(Players[i], "jointeam", "2") 
         }
 
-        user_kill(Players[i], 1)
+        engclient_cmd(Players[i], "joinclass", "5")   
     }
 
     new name_judge[32] 
@@ -180,56 +195,60 @@ public Judge_choose_players(id, iPage)
     if(szJudgeChoice[id][1] != 0)
     {
         new szNameVictim[32]
-        get_user_name( szJudgeChoice[id][1] , szNameVictim , charsmax( szNameVictim ) )
-        iLen += format(menu[ iLen ] , charsmax( menu ) - iLen , "\w%s^n^n", szNameVictim)
+        get_user_name(szJudgeChoice[id][1], szNameVictim, charsmax(szNameVictim))
+        iLen += format(menu[ iLen ], charsmax(menu) - iLen, "\w%s^n^n", szNameVictim)
 
-        // Делаем новое меню
+        // Делаем новое меню, если выбраны два игрока
         iKey |= (1<<0)
-        iLen += format( menu[ iLen ] , charsmax( menu ) - iLen , "\r[\w1\r] \wНачать дуэль!^n")
+        iLen += format( menu[iLen] , charsmax(menu) - iLen , "\r[\w1\r] \wНачать дуэль!^n")
        
         iKey |= (1<<9)
         formatex(menu[iLen], charsmax(menu) - iLen, "^n\r[\w0\r] \wВыход")
         
-        return show_menu( id , iKey , menu , -1 , "Judge_choose_players" )
+        return show_menu(id, iKey, menu, -1, "Judge_choose_players")
     }
     
-	for( new i = iStart; i < iEnd; i++ ) 
+    // пздц говно-код бля
+	for(new i = iStart; i < iEnd; i++) 
 	{
-		if( i < iNum )
+		if(i < iNum)
 		{
-			get_user_name(szPlayers[ i ], name, charsmax(name))
+			get_user_name(szPlayers[i], name, charsmax(name))
 
             if(szPlayers[i] == szJudgeChoice[id][0])
             {
-                iKey |= ( 1<<iItem )
-				iLen += format( menu[ iLen ] , charsmax( menu ) - iLen , "\r[\w%d\r] \w%s \y(\rВыбран\y)^n" , ++iItem , name )
+				iLen += format( menu[iLen], charsmax(menu) - iLen, "\r[\w%d\r] \d%s \y(\rВыбран\y)^n", ++iItem ,name )
+            }
+            else if(cs_get_user_team(szPlayers[i]) == CS_TEAM_UNASSIGNED)
+            {
+				iLen += format(menu[iLen], charsmax(menu) - iLen, "\d[%d] %s \y(\rНе выбрал команду\r)^n", ++iItem, name )
             }
 			else
 			{
-				iKey |= ( 1<<iItem )
-				iLen += format( menu[ iLen ] , charsmax( menu ) - iLen , "\r[\w%d\r] \w%s^n" , ++iItem , name )
+                iKey |= (1<<iItem)
+				iLen += format(menu[iLen], charsmax(menu) - iLen, "\r[\w%d\r] \w%s^n", ++iItem, name)
 			}
 		}
 	}
 
-	iKey |= ( 1<<9 )
+	iKey |= (1<<9)
 
 	if(iEnd < iNum)
 	{
-		iKey |= ( 1<<8 )
-		iLen += format( menu[ iLen ] , charsmax( menu ) - iLen , "^n\r9. \wДальше^n\r0. \w%s" , iPage ? "Назад" : "Выход" )
+		iKey |= (1<<8)
+		iLen += format(menu[iLen], charsmax(menu) - iLen, "^n\r[\w9\r] \wДальше^n\r[\w0\r] \w%s" , iPage ? "Назад" : "Выход")
 	}
 	else
     {
-		iLen += format( menu[ iLen ] , charsmax( menu ) - iLen , "^n\r0. \w%s" , iPage ? "Назад" : "Выход" )
+		iLen += format(menu[iLen] , charsmax(menu) - iLen, "^n\r[\w0\r] \w%s", iPage ? "Назад" : "Выход")
     }
 
-    return show_menu( id , iKey , menu , -1 , "Judge_choose_players" )
+    return show_menu(id, iKey, menu, -1, "Judge_choose_players")
 }
 
 public Handle_Judge_choose_players(id, iKey)
 {
-    switch( iKey )
+    switch(iKey)
 	{
         case 8:
         {
@@ -237,8 +256,11 @@ public Handle_Judge_choose_players(id, iKey)
         }
 		case 9: 
         {
-            if(szJudgeChoice[id][0] != 0 && szJudgeChoice[id][1] != 0) return PLUGIN_HANDLED
-            
+            if(szJudgeChoice[id][0] != 0 && szJudgeChoice[id][1] != 0)
+            {
+                return PLUGIN_HANDLED
+            }
+
             return Judge_choose_players( id , --g_iPlayerPage[ id ] )
         }
         default:
@@ -252,18 +274,18 @@ public Handle_Judge_choose_players(id, iKey)
                 print_color_chat(0, "%s Дуэль скоро начнётся.", CHATSERVERNAME)
                 print_color_chat(0, "%s [!t%s!y] против [!t%s!y]", CHATSERVERNAME, Player1, Player2)
 
-                set_task(5.0, "start_duel", id, _, _, "a", 1)
+                set_task(2.5, "start_duel", id, _, _, "a", 1)
                 return PLUGIN_HANDLED // ... Можно вернуть меню админки, там будет рестарт, смена мапы и т.д.
             }
             if(szJudgeChoice[id][0] == 0)
             {
-                szJudgeChoice[id][0] = szPlayersMenu[ id ][ ( g_iPlayerPage[ id ] * 8 ) + iKey ]
+                szJudgeChoice[id][0] = szPlayersMenu[id][ (g_iPlayerPage[id] * 8) + iKey]
                 return Judge_choose_players(id, g_iPlayerPage[id])
             }
 
             if(szJudgeChoice[id][0] != 0)
             {
-                szJudgeChoice[id][1] = szPlayersMenu[ id ][ ( g_iPlayerPage[ id ] * 8 ) + iKey ]
+                szJudgeChoice[id][1] = szPlayersMenu[id][(g_iPlayerPage[id] * 8) + iKey]
                 return Judge_choose_players(id, g_iPlayerPage[id])
             }
         }
@@ -298,8 +320,6 @@ public duel_countdown(id)
     }
 }  
 
-
-
 public StartDuel(id)
 {
     new Players[32], count_of_players
@@ -307,14 +327,18 @@ public StartDuel(id)
 
     for(new i = 0; i < count_of_players; i++)
     {
-        if(Players[i] != szJudgeChoice[id][0] && Players[i] != szJudgeChoice[id][1])
+        if(Players[i] != szJudgeChoice[id][0] && Players[i] != szJudgeChoice[id][1] && cs_get_user_team(Players[i]) != CS_TEAM_UNASSIGNED)
         {
             cs_set_user_team(Players[i], CS_TEAM_SPECTATOR)
         }
 
-        user_kill(Players[i], 1)
+        if(is_user_alive(Players[i]))
+        {
+            user_kill(Players[i], 1)
+        }
     }
 
+    // Потом сделать рандом
     cs_set_user_team(szJudgeChoice[id][0], CS_TEAM_CT)
     cs_set_user_team(szJudgeChoice[id][1], CS_TEAM_T)
 
