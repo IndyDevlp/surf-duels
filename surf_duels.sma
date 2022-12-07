@@ -10,9 +10,8 @@
 
 new PLUGIN[] = "Surf duels"
 new AUTHOR[] = "\mEl\"
-new VERSION[] = "0.11-a"
+new VERSION[] = "0.12-b"
 
-//new CHATSERVERNAME[] = "!gSurf Duels !t>>>!y"
 new CHATSERVERNAME[] = "!gTournament !t>>>!y"
 
 new g_iPlayerPage[33] 
@@ -24,16 +23,42 @@ new szJudgeChoice[33][2]
 
 new ct_score
 new terrorist_score
-new id_player_1
-new id_player_2
+
+new id_player_1 // ct
+new id_player_2 // tt
 
 new bool:round_started = false
+
+/*  todo: Сделать структурную систему
+enum _:Duel_Player
+{
+    id = 0,
+    score,
+    team,
+    szName[32]
+}
+
+enum _:Duel
+{
+    bool:isNowDuel = false,
+    bool:isRound_started = false,
+    Duel_Player:player_1,
+    Duel_Player:player_2
+}
+
+new Duel:Duel_System
+*/
 
 public plugin_init()
 {
     register_plugin(PLUGIN, VERSION, AUTHOR)
     register_menucmd(register_menuid("Show_Judge_Menu"), (1<<0|1<<1|1<<2|1<<3|1<<4|1<<5|1<<6|1<<7|1<<8|1<<9), "Handle_Judge_Menu")
+    
     register_clcmd("nightvision","Show_Judge_Menu")
+
+    register_clcmd("say /resing", "Duel_Player_Resign")
+    register_clcmd("say_tem /resing", "Duel_Player_Resign")
+    register_clcmd("resing", "Duel_Player_Resign")
 
     register_menucmd(register_menuid("Judge_choose_players"), (1<<0|1<<1|1<<2|1<<3|1<<4|1<<5|1<<6|1<<7|1<<8|1<<9), "Handle_Judge_choose_players")
     register_event("TeamScore", "team_score", "a")
@@ -42,20 +67,11 @@ public plugin_init()
     register_clcmd("chooseteam", "cmdChooseTeam")
     register_clcmd("jointeam", "cmdChooseTeam")
 
-    //register_logevent("Round_Start", 2,"1=Round_Start")
     register_event("HLTV", "Round_Start", "a", "1=0", "2=0")
 }
 
-// Реализовать когда игрок заходит на сервер и идёт дуэль то его кидает в спек
 public cmdChooseTeam(id)
 {
-    // if(cs_get_user_team(id) == CS_TEAM_UNASSIGNED)
-    // {
-    //     engclient_cmd(id, "jointeam", "6")
-        
-    //     return PLUGIN_HANDLED
-    // }
-
     if(isNowDuel || round_started)
     {
         print_color_chat(id, "%s Нельзя присоединяться к игре, когда идёт дуэль!", CHATSERVERNAME)  
@@ -73,6 +89,60 @@ public client_putinserver(id)
     if(isNowDuel || round_started)
     {
         engclient_cmd(id, "jointeam", "6")
+    }
+}
+
+public client_disconnect(id)
+{
+    if(isNowDuel)
+    {
+        new player_disconnected_name[32]
+        get_user_name(id, player_disconnected_name, 31)
+        print_color_chat(0, "%s Игрок !g%s !nпокинул сервер во время дуэли", CHATSERVERNAME, player_disconnected_name)
+        if(id == id_player_1)
+        {
+            new player_winner[32]
+            get_user_name(id_player_2, player_winner, 31)
+            goDuel_Won(player_winner, terrorist_score+1, ct_score)
+        }
+        else if(id == id_player_2)
+        {
+            new player_winner[32]
+            get_user_name(id_player_1, player_winner, 31)
+            goDuel_Won(player_winner, ct_score+1, terrorist_score)
+        }
+    }
+}
+
+// Убрать дубликат кода !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+public Duel_Player_Resign(id)
+{
+    if(isNowDuel)
+    {
+        if(id == id_player_1 || id == id_player_2)
+        {
+            new player_resing_name[32]
+            get_user_name(id, player_resing_name, 31)
+            print_color_chat(0, "%s Игрок !g%s !nсдался", CHATSERVERNAME, player_resing_name)
+        }
+        else
+        {
+            print_color_chat(id, "%s Вы не участвуете в дуэли!", CHATSERVERNAME)
+            return PLUGIN_HANDLED
+        }
+        
+        if(id == id_player_1)
+        {
+            new player_winner[32]
+            get_user_name(id_player_2, player_winner, 31)
+            goDuel_Won(player_winner, terrorist_score+1, ct_score)
+        }
+        else if(id == id_player_2)
+        {
+            new player_winner[32]
+            get_user_name(id_player_1, player_winner, 31)
+            goDuel_Won(player_winner, ct_score+1, terrorist_score)
+        }
     }
 }
 
@@ -136,14 +206,18 @@ public Handle_Judge_Menu(id, iKey)
 
 public doDuel_end(id)
 {
-    szJudgeChoice[id][0] = 0
-    szJudgeChoice[id][1] = 0
+    if(id != -1)
+    {
+        szJudgeChoice[id][0] = 0
+        szJudgeChoice[id][1] = 0
+    }
+
     ct_score = 0
     terrorist_score = 0
     id_player_1 = 0 
     id_player_2 = 0
     isNowDuel = false
-
+/*
     new Players[32], count_of_players
     get_players(Players, count_of_players, "h") 
 
@@ -165,10 +239,14 @@ public doDuel_end(id)
 
         engclient_cmd(Players[i], "joinclass", "5")   
     }
+*/
+    if(id != -1)
+    {
+        new name_judge[32] 
+        get_user_name(id, name_judge, charsmax(name_judge))
+        print_color_chat(0, "%s Судья !t%s !yотменил дуэль.", CHATSERVERNAME, name_judge)
+    }
 
-    new name_judge[32] 
-    get_user_name(id, name_judge, charsmax(name_judge))
-    print_color_chat(0, "%s Судья !t%s !yотменил дуэль.", CHATSERVERNAME, name_judge)
     server_cmd("sv_restart 1")
     server_cmd("mp_freezetime 0")
 }
@@ -208,7 +286,6 @@ public Judge_choose_players(id, iPage)
         return show_menu(id, iKey, menu, -1, "Judge_choose_players")
     }
     
-    // пздц говно-код бля
 	for(new i = iStart; i < iEnd; i++) 
 	{
 		if(i < iNum)
@@ -252,7 +329,7 @@ public Handle_Judge_choose_players(id, iKey)
 	{
         case 8:
         {
-            return Judge_choose_players( id , ++g_iPlayerPage[ id ] )
+            return Judge_choose_players(id, ++g_iPlayerPage[id])
         }
 		case 9: 
         {
@@ -261,17 +338,17 @@ public Handle_Judge_choose_players(id, iKey)
                 return PLUGIN_HANDLED
             }
 
-            return Judge_choose_players( id , --g_iPlayerPage[ id ] )
+            return Judge_choose_players(id, --g_iPlayerPage[id])
         }
         default:
         {
             if(szJudgeChoice[id][0] != 0 && szJudgeChoice[id][1] != 0)
             {
                 new Player1[ 32 ] , Player2[ 32 ]
-                get_user_name( szJudgeChoice[id][0] , Player1 , charsmax( Player1 ) )
-                get_user_name( szJudgeChoice[id][1] , Player2 , charsmax( Player2 ) )
+                get_user_name(szJudgeChoice[id][0], Player1, charsmax(Player1))
+                get_user_name(szJudgeChoice[id][1], Player2, charsmax(Player2))
 
-                print_color_chat(0, "%s Дуэль скоро начнётся.", CHATSERVERNAME)
+                print_color_chat(0, "%s Матч скоро начнётся.", CHATSERVERNAME)
                 print_color_chat(0, "%s [!t%s!y] против [!t%s!y]", CHATSERVERNAME, Player1, Player2)
 
                 set_task(2.5, "start_duel", id, _, _, "a", 1)
@@ -307,14 +384,14 @@ public duel_countdown(id)
     {
         if(Timer & 1)
         {
-            print_color_chat(0, "%s Дуэль начнётся через !t[!g%d!t] !yсекунд!", CHATSERVERNAME, Timer)
+            print_color_chat(0, "%s Матч начнётся через !t[!g%d!t] !yсекунд!", CHATSERVERNAME, Timer)
         }
         --Timer
     }
     else
     {
         remove_task(id)
-        print_color_chat(0, "%s Дуэль началась!", CHATSERVERNAME)
+        print_color_chat(0, "%s Матч начался!", CHATSERVERNAME)
         StartDuel(id)
         // Вызов какой-то функции, которая начинает дуэль. Раскидывает по командам, выдаёт оружие, остальных кидает в спек.
     }
@@ -327,26 +404,31 @@ public StartDuel(id)
 
     for(new i = 0; i < count_of_players; i++)
     {
-        if(Players[i] != szJudgeChoice[id][0] && Players[i] != szJudgeChoice[id][1] && cs_get_user_team(Players[i]) != CS_TEAM_UNASSIGNED)
-        {
-            cs_set_user_team(Players[i], CS_TEAM_SPECTATOR)
-        }
-
         if(is_user_alive(Players[i]))
         {
             user_kill(Players[i], 1)
         }
+
+        if(Players[i] != szJudgeChoice[id][0] && Players[i] != szJudgeChoice[id][1] && cs_get_user_team(Players[i]) != CS_TEAM_UNASSIGNED)
+        {
+            //cs_set_user_team(Players[i], CS_TEAM_SPECTATOR)
+            engclient_cmd(Players[i], "jointeam", "6")
+        }
     }
 
     // Потом сделать рандом
-    cs_set_user_team(szJudgeChoice[id][0], CS_TEAM_CT)
-    cs_set_user_team(szJudgeChoice[id][1], CS_TEAM_T)
+    engclient_cmd(szJudgeChoice[id][0], "jointeam", "2")
+    engclient_cmd(szJudgeChoice[id][0], "joinclass", "5") 
+    engclient_cmd(szJudgeChoice[id][1], "jointeam", "1") 
+    engclient_cmd(szJudgeChoice[id][1], "joinclass", "5") 
 
     ct_score = 0
     terrorist_score = 0
 
-    id_player_1 = szJudgeChoice[id][0]
-    id_player_2 = szJudgeChoice[id][1]
+    id_player_1 = szJudgeChoice[id][0] // CT
+    id_player_2 = szJudgeChoice[id][1] // TT
+    szJudgeChoice[id][0] = 0
+    szJudgeChoice[id][1] = 0
 
     server_cmd("sv_restart 1")
     server_cmd("mp_freezetime 6")
@@ -355,12 +437,10 @@ public StartDuel(id)
 }
 
 /*
-    TODO(Закончить дуэль досрочно (человек сдался)) "say /resign" или судья засчитает поражение сам | isNowDuel = false
-    TODO(Закончить дуэль судьёй) сделал по ошибке типо | isNowDuel = false
-    TODO(Закончить дуэль) Отдать победу какому-то игроку, по причине что второй читер или ещё какие-либо нарушения правил | isNowDuel = false
-
-    TODO(После того как дуэль завершена, вернуть как было) т.е. распределить всех по командам и возродить и начать раунд
-    Конечность раундов 20 раундов или 10 раундов, победа 6 или 11 раунд
+    TODO: Каждый новый раунд у игроков отбирается оружие
+    TODO: Когда начинается дуэль игрокам всплывает меню с оружием, если взял значит готов. (Дуэль не начнётся, пока двое не выберут оружие, тестить с игроком)
+    TODO: Закончить дуэль. Отдать победу какому-то игроку, по причине что второй читер или ещё какие-либо нарушения правил | isNowDuel = false
+   *TODO: Вести счёт раундов. Система запоминает в каком раунде был какой счёт. Сделать возможность вернуться в любое состояние
 */
 
 public team_score()
@@ -391,12 +471,32 @@ public Round_End()
 {
     if(isNowDuel)
     {
-        new Player1[ 32 ] , Player2[ 32 ]
-        get_user_name( id_player_1 , Player1 , charsmax( Player1 ) )
-        get_user_name( id_player_2 , Player2 , charsmax( Player2 ) )
-        print_color_chat(0, "%s !t[!n%s!t] !n- !t%d", CHATSERVERNAME, Player1, ct_score)
-        print_color_chat(0, "%s !t[!n%s!t] !n- !t%d", CHATSERVERNAME, Player2, terrorist_score)
+        new player1_name[32] , player2_name[32]
+        get_user_name(id_player_1, player1_name, charsmax(player1_name)) // ct
+        get_user_name(id_player_2, player2_name, charsmax(player2_name)) // tt
+
+        if(ct_score >= 10 && (ct_score - terrorist_score) >= 2)
+        {
+            goDuel_Won(player1_name, ct_score, terrorist_score)
+            return PLUGIN_HANDLED
+        }
+        else if(terrorist_score >= 10 && (terrorist_score - ct_score) >= 2)
+        {
+            goDuel_Won(player2_name, terrorist_score, ct_score)
+            return PLUGIN_HANDLED
+        }
+
+        print_color_chat(0, "%s !t[!n%s!t] !n- !t%d", CHATSERVERNAME, player1_name, ct_score)
+        print_color_chat(0, "%s !t[!n%s!t] !n- !t%d", CHATSERVERNAME, player2_name, terrorist_score)
     }
+
+    return PLUGIN_CONTINUE
+}
+
+public goDuel_Won(player_winner_name[], winner_score, loser_score)
+{
+    print_color_chat(0, "%s !g%s !nпобеждает со счётом !t[!g%d!n:!g%d!t]", CHATSERVERNAME, player_winner_name, winner_score, loser_score)
+    doDuel_end(-1)
 }
 
 stock print_color_chat(const index, const input[], any:...)
