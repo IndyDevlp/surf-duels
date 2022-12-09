@@ -53,28 +53,32 @@ public plugin_init()
 {
     register_plugin(PLUGIN, VERSION, AUTHOR)
     register_menucmd(register_menuid("Show_Judge_Menu"), (1<<0|1<<1|1<<2|1<<3|1<<4|1<<5|1<<6|1<<7|1<<8|1<<9), "Handle_Judge_Menu")
+    register_menucmd(register_menuid("Show_Duel_Round_Ready"), (1<<0), "Handle_Duel_Round_Ready")
     
     register_clcmd("nightvision","Show_Judge_Menu")
 
-    register_clcmd("say /resing", "Duel_Player_Resign")
-    register_clcmd("say_tem /resing", "Duel_Player_Resign")
-    register_clcmd("resing", "Duel_Player_Resign")
+    register_clcmd("say /resign", "Duel_Player_Resign")
+    register_clcmd("say_team /resign", "Duel_Player_Resign")
+    register_clcmd("resign", "Duel_Player_Resign")
 
     register_menucmd(register_menuid("Judge_choose_players"), (1<<0|1<<1|1<<2|1<<3|1<<4|1<<5|1<<6|1<<7|1<<8|1<<9), "Handle_Judge_choose_players")
     register_event("TeamScore", "team_score", "a")
     register_logevent("Round_End", 2, "1=Round_End")
 
+    register_menucmd(register_menuid("Show_Judge_Duel_Menu"), (1<<0|1<<1|1<<9), "Handle_Judge_Duel_Menu")
+
     register_clcmd("chooseteam", "cmdChooseTeam")
     register_clcmd("jointeam", "cmdChooseTeam")
 
-    register_event("HLTV", "Round_Start", "a", "1=0", "2=0")
+    //register_event("HLTV", "Round_Start", "a", "1=0", "2=0") // сделать не через hltv, а после freezetime
+    register_logevent("Round_Start", 2, "1=Round_Start")
 }
 
 public cmdChooseTeam(id)
 {
     if(isNowDuel || round_started)
     {
-        print_color_chat(id, "%s Нельзя присоединяться к игре, когда идёт дуэль!", CHATSERVERNAME)  
+        print_color_chat(id, "%s You cant join in game when there is duel!", CHATSERVERNAME)  
     }
     else
     {
@@ -94,11 +98,11 @@ public client_putinserver(id)
 
 public client_disconnect(id)
 {
-    if(isNowDuel)
+    if(isNowDuel && (id == id_player_1 || id == id_player_2))
     {
         new player_disconnected_name[32]
         get_user_name(id, player_disconnected_name, 31)
-        print_color_chat(0, "%s Игрок !g%s !nпокинул сервер во время дуэли", CHATSERVERNAME, player_disconnected_name)
+        print_color_chat(0, "%s Player !g%s !n has been disconnected of the server during duel", CHATSERVERNAME, player_disconnected_name)
         if(id == id_player_1)
         {
             new player_winner[32]
@@ -123,11 +127,11 @@ public Duel_Player_Resign(id)
         {
             new player_resing_name[32]
             get_user_name(id, player_resing_name, 31)
-            print_color_chat(0, "%s Игрок !g%s !nсдался", CHATSERVERNAME, player_resing_name)
+            print_color_chat(0, "%s Player !g%s !nresign", CHATSERVERNAME, player_resing_name)
         }
         else
         {
-            print_color_chat(id, "%s Вы не участвуете в дуэли!", CHATSERVERNAME)
+            print_color_chat(id, "%s You are not participating in duel!", CHATSERVERNAME)
             return PLUGIN_HANDLED
         }
         
@@ -161,6 +165,10 @@ public Show_Judge_Menu(id)
     {
         iLen += formatex(szMenu[iLen], charsmax(szMenu) - iLen, "\r[\w1\r] \dВыбрать игроков для дуэли \y(\rИдёт дуэль\y)^n")
     }
+    else
+    {
+        iLen += formatex(szMenu[iLen], charsmax(szMenu) - iLen, "\d[1] Выбрать игроков для дуэли^n")
+    }
 
     if(get_user_flags(id) & ADMIN_KICK && isNowDuel)
 	{
@@ -171,12 +179,30 @@ public Show_Judge_Menu(id)
     {
 		iLen += formatex(szMenu[iLen], charsmax(szMenu) - iLen, "\r[\w2\r] \dСбросить дуэль \y(\rДуэль не идёт\y)^n")
     }
+    else
+    {
+        iLen += formatex(szMenu[iLen], charsmax(szMenu) - iLen, "\d[2] Сбросить дуэль^n")
+    }
+
+    if(get_user_flags(id) & ADMIN_KICK && isNowDuel)
+    {
+        iLen += formatex(szMenu[iLen], charsmax(szMenu) - iLen, "\r[\w3\r] \wОтдать раунд игроку^n")
+		iKeys |= (1<<2)	
+    }
+
+    if(get_user_flags(id) & ADMIN_KICK && isNowDuel)
+    {
+        iLen += formatex(szMenu[iLen], charsmax(szMenu) - iLen, "\r[\w4\r] \wЗасчитать поражение игроку^n")
+		iKeys |= (1<<3)	
+    }
 	
 	formatex(szMenu[iLen], charsmax(szMenu) - iLen, "^n\r[\w0\r] \wВыход")
 	iKeys |= (1<<9)
 	
 	return show_menu(id, iKeys, szMenu, -1, "Show_Judge_Menu");
 }
+
+new g_bAction[33] = -1
 
 public Handle_Judge_Menu(id, iKey)
 {
@@ -189,7 +215,7 @@ public Handle_Judge_Menu(id, iKey)
 		{
             szJudgeChoice[id][0] = 0
             szJudgeChoice[id][1] = 0
-            Judge_choose_players(id, g_iPlayerPage[ id ] = 0)
+            Judge_choose_players(id, g_iPlayerPage[id] = 0)
             return PLUGIN_HANDLED
         }
         case 1: 
@@ -197,12 +223,119 @@ public Handle_Judge_Menu(id, iKey)
             doDuel_end(id)
             return PLUGIN_HANDLED
         }
+        case 2: // отдать раунд игроку
+        {
+            g_bAction[id] = 0
+            Show_Judge_Duel_Menu(id)
+        }
+        case 3: // Засчитать поражение игроку
+        {
+            g_bAction[id] = 1
+            Show_Judge_Duel_Menu(id)
+        }
+        
 
 		case 9: return PLUGIN_HANDLED
 	}
 
     return PLUGIN_HANDLED
 }    
+
+public Show_Duel_Round_Ready(id)
+{
+	new szMenu[512], iKeys, iLen
+	iLen = formatex(szMenu[iLen], charsmax(szMenu), "\yReady?^n^n")
+
+    iLen += formatex(szMenu[iLen], charsmax(szMenu) - iLen, "\r[\w1\r] \wGo^n")
+    iKeys |= (1<<0)	
+
+    return show_menu(id, iKeys, szMenu, -1, "Show_Duel_Round_Ready");
+}
+
+public Handle_Duel_Round_Ready(id, iKey)
+{
+	new name[32]
+	get_user_name(id, name, 31)
+
+    switch(iKey)
+    {
+        case 0:
+        {
+            print_color_chat(0, "!g%s !t>>> !yGo!", name)
+            return PLUGIN_HANDLED
+        }
+    }
+
+    return PLUGIN_HANDLED
+}
+
+public Show_Judge_Duel_Menu(id) // 0 - отдать раунд, 1 - засчитать поражение
+{
+    new player1_name[32], player2_name[32]
+    get_user_name(id_player_1, player1_name, charsmax(player1_name))
+    get_user_name(id_player_2, player2_name, charsmax(player2_name))
+
+    new szMenu[512], iKeys, iLen
+	iLen = formatex(szMenu[iLen], charsmax(szMenu), "\yВыбор игрока^n^n")
+    iLen += formatex(szMenu[iLen], charsmax(szMenu) - iLen, "Действие: \w[\r%s\w]^n^n", !g_bAction[id] ? "Отдать раунд" : "Засчитать поражение")
+
+    iLen += formatex(szMenu[iLen], charsmax(szMenu) - iLen, "\r[\w1\r] \w%s - \r%d \w- \r%s^n", player1_name, ct_score, "CT")
+    iKeys |= (1<<0)	
+
+    iLen += formatex(szMenu[iLen], charsmax(szMenu) - iLen, "\r[\w2\r] \w%s - \r%d \w- \r%s^n", player2_name, terrorist_score, "TT")
+    iKeys |= (1<<1)	
+
+    formatex(szMenu[iLen], charsmax(szMenu) - iLen, "^n^n\r[\w0\r] \wВыход")
+	iKeys |= (1<<9)
+
+    return show_menu(id, iKeys, szMenu, -1, "Show_Judge_Duel_Menu");
+}
+
+native cs_force_team_win(CsTeams:team);
+
+public Handle_Judge_Duel_Menu(id, iKey)
+{
+    switch(iKey)
+    {   // Бля это пиздец, вот бы ООП сейчас
+
+        case 0: // первый игрок - CT
+        {
+            switch(g_bAction[id])
+            {
+                case 0: // Отдать раунд
+                {
+                    cs_force_team_win(CS_TEAM_CT)
+                    return PLUGIN_HANDLED
+                }
+                case 1: // Засчитать поражение
+                {
+                    new player2_name[32]
+                    get_user_name(id_player_2, player2_name, 31)
+                    goDuel_Won(player2_name, terrorist_score, ct_score)
+                    return PLUGIN_HANDLED
+                }
+            }
+        }
+        case 1:
+        {
+            switch(g_bAction[id])
+            {
+                case 0: // Отдать раунд
+                {
+                    cs_force_team_win(CS_TEAM_T)
+                    return PLUGIN_HANDLED
+                }
+                case 1: // Засчитать поражение
+                {
+                    new player1_name[32]
+                    get_user_name(id_player_1, player1_name, 31)
+                    goDuel_Won(player1_name, ct_score, terrorist_score)
+                    return PLUGIN_HANDLED
+                }
+            }
+        }
+    }
+}
 
 public doDuel_end(id)
 {
@@ -217,29 +350,7 @@ public doDuel_end(id)
     id_player_1 = 0 
     id_player_2 = 0
     isNowDuel = false
-/*
-    new Players[32], count_of_players
-    get_players(Players, count_of_players, "h") 
 
-    for(new i = 0; i < count_of_players; i++)
-    {
-        if(is_user_alive(Players[i]))
-        {
-            user_kill(Players[i], 1)
-        }
-
-        if((i+1) & 1)
-        {
-            engclient_cmd(Players[i], "jointeam", "1") 
-        }
-        else
-        {
-            engclient_cmd(Players[i], "jointeam", "2") 
-        }
-
-        engclient_cmd(Players[i], "joinclass", "5")   
-    }
-*/
     if(id != -1)
     {
         new name_judge[32] 
@@ -268,13 +379,13 @@ public Judge_choose_players(id, iPage)
         iLen += format(menu[ iLen ] , charsmax( menu ) - iLen , "\yВыбраны:^n" )
         new szNameVictim[32]
         get_user_name( szJudgeChoice[id][0] , szNameVictim , charsmax( szNameVictim ) )
-        iLen += format(menu[ iLen ] , charsmax( menu ) - iLen , "\w%s^n%s", szNameVictim, szJudgeChoice[id][1] == 0 ? "^n" : "")
+        iLen += format(menu[ iLen ] , charsmax( menu ) - iLen , "\w%s - \rCT^n%s", szNameVictim, szJudgeChoice[id][1] == 0 ? "^n" : "")
     }
     if(szJudgeChoice[id][1] != 0)
     {
         new szNameVictim[32]
         get_user_name(szJudgeChoice[id][1], szNameVictim, charsmax(szNameVictim))
-        iLen += format(menu[ iLen ], charsmax(menu) - iLen, "\w%s^n^n", szNameVictim)
+        iLen += format(menu[ iLen ], charsmax(menu) - iLen, "\w%s - \rTT^n^n", szNameVictim)
 
         // Делаем новое меню, если выбраны два игрока
         iKey |= (1<<0)
@@ -309,7 +420,6 @@ public Judge_choose_players(id, iPage)
 	}
 
 	iKey |= (1<<9)
-
 	if(iEnd < iNum)
 	{
 		iKey |= (1<<8)
@@ -348,8 +458,8 @@ public Handle_Judge_choose_players(id, iKey)
                 get_user_name(szJudgeChoice[id][0], Player1, charsmax(Player1))
                 get_user_name(szJudgeChoice[id][1], Player2, charsmax(Player2))
 
-                print_color_chat(0, "%s Матч скоро начнётся.", CHATSERVERNAME)
-                print_color_chat(0, "%s [!t%s!y] против [!t%s!y]", CHATSERVERNAME, Player1, Player2)
+                print_color_chat(0, "%s The match will start soon", CHATSERVERNAME)
+                print_color_chat(0, "%s [!t%s!y] VS [!t%s!y]", CHATSERVERNAME, Player1, Player2)
 
                 set_task(2.5, "start_duel", id, _, _, "a", 1)
                 return PLUGIN_HANDLED // ... Можно вернуть меню админки, там будет рестарт, смена мапы и т.д.
@@ -384,16 +494,15 @@ public duel_countdown(id)
     {
         if(Timer & 1)
         {
-            print_color_chat(0, "%s Матч начнётся через !t[!g%d!t] !yсекунд!", CHATSERVERNAME, Timer)
+            print_color_chat(0, "%s The match will start in !t[!g%d!t] !yseconds", CHATSERVERNAME, Timer)
         }
         --Timer
     }
     else
     {
         remove_task(id)
-        print_color_chat(0, "%s Матч начался!", CHATSERVERNAME)
+        print_color_chat(0, "%s The match has started!", CHATSERVERNAME)
         StartDuel(id)
-        // Вызов какой-то функции, которая начинает дуэль. Раскидывает по командам, выдаёт оружие, остальных кидает в спек.
     }
 }  
 
@@ -419,8 +528,11 @@ public StartDuel(id)
     // Потом сделать рандом
     engclient_cmd(szJudgeChoice[id][0], "jointeam", "2")
     engclient_cmd(szJudgeChoice[id][0], "joinclass", "5") 
+    cs_set_user_team(szJudgeChoice[id][0], CS_TEAM_CT)
+
     engclient_cmd(szJudgeChoice[id][1], "jointeam", "1") 
     engclient_cmd(szJudgeChoice[id][1], "joinclass", "5") 
+    cs_set_user_team(szJudgeChoice[id][1], CS_TEAM_T)
 
     ct_score = 0
     terrorist_score = 0
@@ -437,8 +549,6 @@ public StartDuel(id)
 }
 
 /*
-    TODO: Каждый новый раунд у игроков отбирается оружие
-    TODO: Когда начинается дуэль игрокам всплывает меню с оружием, если взял значит готов. (Дуэль не начнётся, пока двое не выберут оружие, тестить с игроком)
     TODO: Закончить дуэль. Отдать победу какому-то игроку, по причине что второй читер или ещё какие-либо нарушения правил | isNowDuel = false
    *TODO: Вести счёт раундов. Система запоминает в каком раунде был какой счёт. Сделать возможность вернуться в любое состояние
 */
@@ -464,6 +574,14 @@ public Round_Start()
     {
         isNowDuel = true
         round_started = false
+    }
+
+    if(isNowDuel)
+    {
+        Show_Duel_Round_Ready(id_player_1)
+        Show_Duel_Round_Ready(id_player_2)
+        cs_set_user_money(id_player_1, 1333337)
+        cs_set_user_money(id_player_2, 1333337)
     }
 }
 
@@ -495,7 +613,8 @@ public Round_End()
 
 public goDuel_Won(player_winner_name[], winner_score, loser_score)
 {
-    print_color_chat(0, "%s !g%s !nпобеждает со счётом !t[!g%d!n:!g%d!t]", CHATSERVERNAME, player_winner_name, winner_score, loser_score)
+    // Проиграть звук
+    print_color_chat(0, "%s !g%s !nwon with score !t[!g%d!n:!g%d!t]", CHATSERVERNAME, player_winner_name, winner_score, loser_score)
     doDuel_end(-1)
 }
 
